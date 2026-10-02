@@ -1,3 +1,35 @@
+/*
+// Module:      dmem
+// File:        rtl/dmem.v
+// Description: Data memory is the CPU's street of numbered mailboxes.
+//              Each mailbox holds one byte, and each byte has its own address.
+//              Programs use this memory to store values that do not fit in
+//              registers: arrays, strings, saved results, and so on.
+//
+//              Unlike the register file, data memory is read and written
+//              during program execution. Writes happen on the rising clock
+//              edge, and only when the write-enable signal is high. Reads
+//              are immediate: change the address, and the byte value appears
+//              on the output right away, without waiting for a clock edge.
+//
+//              The CPU can read or write 1 byte, 2 bytes, or 4 bytes at a
+//              time. A 3-bit control signal (funct3) tells the memory which
+//              width to use. For loads, funct3 also says whether to sign-
+//              extend the result (fill the upper bits with the top bit) or
+//              zero-extend it (fill the upper bits with zeros).
+//
+//              Multi-byte values are stored little-endian: the smallest part
+//              of the number lives at the lowest address. For example, a
+//              4-byte write puts byte 0 at address A, byte 1 at A+1, byte 2
+//              at A+2, and byte 3 at A+3.
+//
+//              Data memory has no reset. Real memory does not clear itself
+//              when power comes on, and neither does this one. It holds
+//              whatever was last written. Any address that was never written
+//              reads back as unknown (X in simulation), which 
+//              makes bugs from uninitialized reads easy to spot.
+*/
+
 `timescale 1ns/1ps
 `include "definitions.vh"
 module dmem #(parameter DEPTH = 256)(

@@ -1,3 +1,51 @@
+/*
+// Module:      decoder
+// File:        rtl/decoder.v
+// Description: Every 32-bit RISC-V instruction is
+//              a puzzle piece: hidden inside it are the answers to "what
+//              does this instruction do?", "which registers does it touch?",
+//              "does it use an immediate?", and so on. The decoder's job is
+//              to look at the instruction word and set every control signal
+//              that the rest of the pipeline needs.
+//
+//              The decoder has one input: the raw 32-bit instruction. It
+//              produces many outputs. These fall into four groups:
+//
+//                1. Register indices - rs1 (first source register), 
+//                   rs2 (second source register), and rd (destination 
+//                   register). Always sliced from the same bit positions, 
+//                   no matter the instruction format.
+//
+//                2. ALU hints: alu_control and alu_src. These tell the ALU
+//                   which operation to perform and whether its second input
+//                   should come from a register or from the immediate.
+//
+//                3. Pipeline control switches: reg_write, mem_read,
+//                   mem_write, wb_sel, branch, and jump. These tell the
+//                   later stages of the pipeline what to do with the result.
+//
+//                4. Immediate and error signals: imm_type tells the
+//                   immediate generator which format to unpack, and illegal
+//                   goes high when the instruction does not match any valid
+//                   RV32I pattern.
+//
+//              The decoder is combinational: no clock, no reset, no memory.
+//              Change the instruction, and every output updates immediately.
+//
+//              The module works by first slicing out the opcode (the main
+//              instruction group), plus funct3 and funct7 (smaller selectors
+//              used inside a group). It then runs one large case statement on
+//              the opcode. Three groups, R, I, and Branch, need a second-level
+//              case on funct3 (and sometimes funct7) to pick the exact ALU
+//              operation. Every other group has the same control signals for
+//              all its instructions, so no inner case is needed.
+//
+//              All outputs are set to safe defaults at the top of the always
+//              block. Each case branch then overrides only the signals that
+//              are different from the defaults. Anything that falls through
+//              to the outer default branch is marked as illegal.
+*/
+
 `timescale 1ns/1ps
 `include "definitions.vh"
 module decoder(

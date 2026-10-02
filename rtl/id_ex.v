@@ -1,3 +1,45 @@
+/*
+// Module:      id_ex
+// File:        rtl/id_ex.v
+// Description: The Decode/Execute pipeline register. This is the largest of
+//              the four lunchboxes between pipeline stages, because Decode
+//              produces a lot of information and Execute needs all of it.
+//
+//
+//              What this lunchbox carries:
+//                - Data values: the two register values (rs1_value and
+//                  rs2_value) read from the register file, the unpacked
+//                  immediate, and the instruction's own PC.
+//                - Register indices: rs1_addr, rs2_addr, and rd_addr. The
+//                  first two are used by the forwarding unit to detect
+//                  hazards. The third travels all the way to Writeback.
+//                - Execute control: alu_control, alu_src, use_pc, branch,
+//                  jump, jalr, and funct3. These tell the ALU and branch
+//                  unit what to compute.
+//                - Memory control: mem_read and mem_write.
+//                - Writeback control: reg_write and wb_sel.
+//                - System signals: sys_op and illegal, which travel to the
+//                  end of the pipeline so the top level can react to them.
+//
+//              This register has two special behaviors beyond the usual
+//              "copy inputs to outputs on the clock edge":
+//
+//                - flush: when high, every output clears to zero. This turns
+//                  the instruction currently in Decode into a bubble, a
+//                  do-nothing instruction that flows through Execute,
+//                  Memory, and Writeback without affecting anything. Flush
+//                  is used both when the hazard unit stalls (to keep the
+//                  younger instruction in Decode) and when a branch is taken
+//                  (to discard the wrongly-fetched instruction).
+//
+//                - reset: active-low. When asserted, every output clears to
+//                  zero, giving the pipeline a clean starting state.
+//
+//              Priority order inside the always block: reset wins over flush,
+//              flush wins over the normal copy. This ensures the register
+//              always ends up in a known state when something goes wrong.
+*/
+
 `timescale 1ns/1ps
 `include "definitions.vh"
 module id_ex(

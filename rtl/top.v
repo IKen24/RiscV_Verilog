@@ -1,3 +1,77 @@
+/*
+// Module:      top
+// File:        rtl/top.v
+// Description: The top-level CPU. This is the map of the whole design. It
+//              instantiates every module, wires the pipeline stages together,
+//              and places the four pipeline registers between them. Nothing
+//              computes anything interesting here all the real work happens
+//              inside the submodules. The top level is the factory floor:
+//              the workers and the lunchboxes, arranged in a line.
+//
+//              The five stages, in order:
+//
+//                IF   (Fetch): PC + imem. Gets the next instruction.
+//                ID   (Decode): decoder + register file + immgen.
+//                               Figures out what the instruction means,
+//                               reads the source registers, unpacks the
+//                               immediate.
+//                EX   (Execute): ALU, forwarding muxes, branch unit.
+//                                Does the math and decides branch/jump
+//                                direction.
+//                MEM  (Memory): dmem. Reads or writes data memory.
+//                WB   (Writeback): the register file's write port. Puts
+//                                    the final value where it belongs.
+//
+//              Between each pair of stages sits a pipeline register:
+//              if_id, id_ex, ex_mem, and mem_wb. On every clock edge, each
+//              of these captures its inputs and passes them to the next
+//              stage, so up to five instructions can be in flight at once.
+//
+//              The top level also owns the small pieces of glue logic that
+//              do not belong to any single stage:
+//
+//                - The PC+4 adder (assign pc_plus_4 = pc + 4).
+//                - The PC-next mux, which chooses between PC+4 and the
+//                  branch/jump target.
+//                - The two ALU input muxes, which select between the
+//                  forwarded register value, the raw register value, the
+//                  immediate, or the PC.
+//                - The branch target adder (id_ex_pc + id_ex_immediate).
+//                - The redirect target mux, which chooses between the
+//                  branch adder's output and the ALU result (for JALR).
+//                - The writeback mux, which chooses between the ALU result,
+//                  the loaded data, and PC+4.
+//                - The flush and stall signals that keep the pipeline
+//                  synchronized (drawn from the hazard unit and the branch
+//                  unit).
+//
+//              Two internal modules produce signals that reach backward
+//              through the pipeline:
+//
+//                - The forwarding unit drives two muxes in Execute, using
+//                  register numbers from EX/MEM and MEM/WB.
+//                - The branch unit drives the PC-next mux in Fetch, using
+//                  the branch decision computed in Execute.
+//
+//              These backward paths are the only places in the design where
+//              a signal flows against the direction of the pipeline. They
+//              are just wires, but they are easy to overlook when tracing
+//              through the design for the first time.
+//
+//              Parameters:
+//                - IMEM_DEPTH      number of 32-bit words in instruction memory
+//                - IMEM_INIT_FILE  path to the hex file holding the program
+//                - DMEM_DEPTH      number of bytes in data memory
+//
+//              Ports:
+//                - clk, rst        the two control inputs
+//                - sys_op_out      exposed from MEM/WB so a testbench can
+//                                  detect ECALL and stop the simulation
+//                - illegal_out     exposed from MEM/WB so a testbench can
+//                                  catch illegal instructions
+//
+*/
+
 `timescale 1ns/1ps
 `include "definitions.vh"
 

@@ -1,3 +1,16 @@
+/*
+// Module:      alu
+// File:        rtl/alu.v
+// Description: The arithmetic logic unit is the part of the CPU that
+//              does the math. It takes two 32-bit numbers and a
+//              5-bit operation selector, and produces a 32-bit result plus
+//              a single "zero" flag that is high when the result is zero.
+//
+//              The ALU knows how to add, subtract, AND, OR, XOR, shift left,
+//              shift right (logical and arithmetic), compare two numbers as
+//              signed or unsigned, and pass either input straight through
+//              unchanged. It has no clock and no memory: it is entirely combinational logic.
+*/
 `timescale 1ns/1ps
 `include "definitions.vh"
 module alu(

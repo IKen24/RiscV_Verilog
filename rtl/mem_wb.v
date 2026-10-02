@@ -1,3 +1,43 @@
+/*
+// Module:      mem_wb
+// File:        rtl/mem_wb.v
+// Description: The Memory/Writeback pipeline register. This is the last of
+//              the four lunchboxes between pipeline stages. It carries the
+//              final results from the Memory stage into the Writeback stage,
+//              where they are written into the register file.
+//
+//
+//              What this lunchbox carries:
+//                - Three possible writeback values, only one of which will
+//                  actually be written to the register file:
+//                    - alu_result: for instructions that produce their
+//                      answer in the ALU (arithmetic, logic, and so on).
+//                    - read_data: for loads, which get their value from
+//                      data memory.
+//                    - pc_plus_4: for jumps (JAL and JALR), which write
+//                      the return address.
+//                  The wb_sel signal decides which of these three wins.
+//                - The destination register number (rd_addr), which tells
+//                  the register file which box to write into.
+//                - The Writeback control signals (reg_write and wb_sel).
+//                - The system-operation code and illegal-instruction flag,
+//                  which are exposed to the top level so a testbench can
+//                  detect ECALL and illegal instructions as they reach the
+//                  end of the pipeline.
+//
+//              What is NOT carried: everything that has finished its job by
+//              the end of the Memory stage. That includes the store data
+//              (rs2_value), the width/sign selector (funct3), and the
+//              memory control signals (mem_read and mem_write). None of
+//              those matter anymore once the instruction has left Memory.
+//
+//              On reset, every output clears to zero, giving the pipeline a
+//              clean starting state. There is no flush or stall input on
+//              this register: by the time an instruction reaches the end of
+//              the pipeline, it is always committed to memory or to the
+//              register file. Nothing can throw it away now.
+*/
+
 `timescale 1ns/1ps
 `include "definitions.vh"
 module mem_wb(
