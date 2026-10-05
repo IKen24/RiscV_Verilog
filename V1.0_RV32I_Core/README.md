@@ -86,8 +86,8 @@ You should see a version number.
 Clone the repository:
 
 ```bash
-git clone https://github.com/IKen24/RiscV_Verilog_V1.0.git
-cd RiscV_Verilog_V1.0
+git clone https://github.com/IKen24/RiscV_Verilog.git
+cd RiscV_Verilog
 ```
 
 Create a folder for simulation output:
