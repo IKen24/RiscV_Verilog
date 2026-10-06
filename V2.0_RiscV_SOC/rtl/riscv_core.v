@@ -13,8 +13,11 @@ module riscv_core(
     input  wire       rst,
 
     // ---- Instruction Memory Interface ----
-    output wire [31:0] imem_address,
-    input  wire [31:0] imem_instruction,
+    output wire [31:0] wb_ibus_adr_o,
+    input wire [31:0] wb_ibus_dat_i,
+    output reg wb_ibus_cyc_o,
+    output reg wb_ibus_stb_o,
+    input wire wb_ibus_ack_i,
 
     // ---- Data Memory Interface ----
     output wire        dmem_mem_read,
@@ -142,16 +145,65 @@ pc pc_dut (
     .pc(pc)
 );
 
-// Instruction memory is now external.
-// Drive the output port with the current PC.
-assign imem_address = pc;
-
-// Receive the instruction from the external memory.
-assign instruction = imem_instruction;
-
 assign pc_plus_4 = pc + 4;
 assign pc_next = branch_taken ? ex_redirect_target : pc_plus_4;
+assign wb_ibus_adr_o = pc;
 
+wire ibus_stall;
+assign ibus_stall = (ibus_state == WAIT) & ~wb_ibus_ack_i;
+
+localparam [1:0] IDLE = 2'b00;
+localparam [1:0] WAIT = 2'b01;
+reg [1:0] ibus_state;
+reg [31:0] fetched_instruction;
+
+always @(posedge clk) begin
+    if (rst == 0) begin
+        ibus_state <= IDLE;
+        wb_ibus_cyc_o <= 0;
+        wb_ibus_stb_o <= 0;
+        fetched_instruction <= 0;
+    end else if (branch_taken) begin
+        // Panic button: abort transaction and reset state
+        ibus_state <= IDLE;
+        wb_ibus_cyc_o <= 0;
+        wb_ibus_stb_o <= 0;
+        fetched_instruction <= 0; 
+    end else begin
+        case (ibus_state)
+            IDLE: begin
+                // We have a new PC, request the instruction
+                wb_ibus_cyc_o <= 1;
+                wb_ibus_stb_o <= 1;
+                ibus_state <= WAIT; // Transition to WAIT
+            end
+            
+            WAIT: begin
+                if (wb_ibus_ack_i == 1) begin
+                    // Transaction complete! Capture data and drop request.
+                    fetched_instruction <= wb_ibus_dat_i;
+                    wb_ibus_cyc_o <= 0;
+                    wb_ibus_stb_o <= 0;
+                    ibus_state <= IDLE; // Transition back to IDLE
+                end else begin
+                    // Memory is still thinking. Hold the request.
+                    wb_ibus_cyc_o <= 1;
+                    wb_ibus_stb_o <= 1;
+                    ibus_state <= WAIT; // Explicitly stay in WAIT
+                end
+            end
+            
+            default: begin
+                // Safety net
+                ibus_state <= IDLE;
+                wb_ibus_cyc_o <= 0;
+                wb_ibus_stb_o <= 0;
+            end
+        endcase
+    end
+end
+
+assign instruction = fetched_instruction;
 
 // IF/ID PIPELINE REGISTER
 
@@ -390,9 +442,10 @@ hazard hazard_dut (
     .id_ex_rd_addr  (id_ex_rd_addr),
     .if_id_rs1_addr (if_id_rs1_addr),
     .if_id_rs2_addr (if_id_rs2_addr),
-    .stall          (stall)
+    .stall          (hazard_stall)
 );                                                
 
+assign stall = hazard_stall | ibus_stall;
 // EXPOSE SYSTEM SIGNALS TO TESTBENCH
 
 assign sys_op_out  = mem_wb_sys_op;

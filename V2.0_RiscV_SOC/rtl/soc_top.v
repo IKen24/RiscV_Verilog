@@ -77,4 +77,14 @@ dmem #(
     .read_data(dmem_read_data)
 );
 
+// Wire the address and data directly to imem
+assign imem_address = core_dut.wb_ibus_adr_o;
+assign core_dut.wb_ibus_dat_i = imem_instruction;
+
+// ZERO-LATENCY TRICK: 
+// Because imem is combinational, it has the data ready instantly.
+// We simply tie the acknowledge signal directly to the strobe signal.
+// Whenever the core asks (stb=1), the slave instantly says yes (ack=1).
+assign core_dut.wb_ibus_ack_i = core_dut.wb_ibus_stb_o;
+
 endmodule
