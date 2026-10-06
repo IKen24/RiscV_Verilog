@@ -1,5 +1,5 @@
 /*
-// Module:      top
+// Module:      riscv_core
 // File:        rtl/riscv_core.v
 // Description:  
 //
@@ -127,6 +127,7 @@ wire        stall;
 wire        flush_id_ex;
 wire [4:0]  if_id_rs1_addr;
 wire [4:0]  if_id_rs2_addr;
+wire        hazard_stall;
 
 // -------- Branch stage wires --------
 wire        branch_taken;
@@ -137,10 +138,12 @@ wire [31:0] ex_redirect_target;
 
 // FETCH STAGE
 
+wire stall_pc = branch_taken ? 1'b0 : stall;
+
 pc pc_dut (
     .clk(clk),
     .rst(rst),
-    .stall(stall),
+    .stall(stall_pc),
     .pc_next(pc_next),
     .pc(pc)
 );
@@ -149,13 +152,14 @@ assign pc_plus_4 = pc + 4;
 assign pc_next = branch_taken ? ex_redirect_target : pc_plus_4;
 assign wb_ibus_adr_o = pc;
 
-wire ibus_stall;
-assign ibus_stall = (ibus_state == WAIT) & ~wb_ibus_ack_i;
-
 localparam [1:0] IDLE = 2'b00;
 localparam [1:0] WAIT = 2'b01;
+localparam [1:0] DONE = 2'b10;
 reg [1:0] ibus_state;
 reg [31:0] fetched_instruction;
+
+wire ibus_stall;
+assign ibus_stall = (ibus_state == IDLE) | (ibus_state == WAIT);
 
 always @(posedge clk) begin
     if (rst == 0) begin
@@ -184,13 +188,17 @@ always @(posedge clk) begin
                     fetched_instruction <= wb_ibus_dat_i;
                     wb_ibus_cyc_o <= 0;
                     wb_ibus_stb_o <= 0;
-                    ibus_state <= IDLE; // Transition back to IDLE
+                    ibus_state <= DONE;
                 end else begin
                     // Memory is still thinking. Hold the request.
                     wb_ibus_cyc_o <= 1;
                     wb_ibus_stb_o <= 1;
                     ibus_state <= WAIT; // Explicitly stay in WAIT
                 end
+            end
+
+            DONE: begin
+                ibus_state <= IDLE;
             end
             
             default: begin
