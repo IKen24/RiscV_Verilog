@@ -20,12 +20,14 @@ module riscv_core(
     input wire wb_ibus_ack_i,
 
     // ---- Data Memory Interface ----
-    output wire        dmem_mem_read,
-    output wire        dmem_mem_write,
-    output wire [2:0]  dmem_funct3,
-    output wire [31:0] dmem_address,
-    output wire [31:0] dmem_write_data,
-    input  wire [31:0] dmem_read_data,
+    output wire [31:0] wb_dbus_adr_o,
+    output wire [31:0] wb_dbus_dat_o,
+    input  wire [31:0] wb_dbus_dat_i,
+    output wire        wb_dbus_we_o,
+    output wire [3:0]  wb_dbus_sel_o,
+    output reg         wb_dbus_cyc_o,
+    output reg         wb_dbus_stb_o,
+    input  wire        wb_dbus_ack_i,
 
     // ---- System signals exposed for testbench ----
     output wire [3:0]  sys_op_out,
@@ -135,6 +137,12 @@ wire        flush_if_id;
 wire [31:0] ex_branch_target;
 wire [31:0] ex_redirect_target;
 
+// -------- D-Bus (data memory) FSM wires --------
+wire        dbus_stall;
+wire [31:0] dmem_read_data_raw;
+wire [31:0] dmem_read_data_extracted;
+reg [3:0]  dbus_sel;
+
 
 // FETCH STAGE
 
@@ -198,7 +206,10 @@ always @(posedge clk) begin
             end
 
             DONE: begin
-                ibus_state <= IDLE;
+                if (!stall) begin
+                    ibus_state <= IDLE;
+                end
+                // else: hold in DONE until the pipeline is ready to consume
             end
             
             default: begin
@@ -212,6 +223,121 @@ always @(posedge clk) begin
 end
 
 assign instruction = fetched_instruction;
+
+assign wb_dbus_adr_o = ex_mem_alu_result;
+assign wb_dbus_dat_o = ex_mem_rs2_value;
+assign wb_dbus_we_o  = ex_mem_mem_write;
+assign wb_dbus_sel_o = dbus_sel;
+
+localparam DBUS_IDLE = 2'b00;
+localparam DBUS_WAIT = 2'b01;
+localparam DBUS_DONE = 2'b10;
+reg [1:0] dbus_state;
+reg [31:0] dmem_read_data_raw_reg;
+reg dbus_serviced;
+reg  [31:0] serviced_addr;
+reg         serviced_we;
+reg         serviced_valid;
+wire [31:0] cur_addr  = ex_mem_alu_result;
+wire        cur_we    = ex_mem_mem_write;
+wire        cur_memop = ex_mem_mem_read | ex_mem_mem_write;
+
+wire is_new_memop = cur_memop &&
+                    (!serviced_valid || serviced_addr != cur_addr || serviced_we != cur_we);
+
+always @(posedge clk) begin
+    if (rst == 0) begin
+        dbus_state             <= DBUS_IDLE;
+        wb_dbus_cyc_o          <= 1'b0;
+        wb_dbus_stb_o          <= 1'b0;
+        dmem_read_data_raw_reg <= 32'b0;
+        serviced_addr          <= 32'b0;
+        serviced_we            <= 1'b0;
+        serviced_valid         <= 1'b0;
+    end else begin
+        case (dbus_state)
+            DBUS_IDLE: begin
+                wb_dbus_cyc_o <= 1'b0;
+                wb_dbus_stb_o <= 1'b0;
+                if (is_new_memop) begin
+                    wb_dbus_cyc_o <= 1'b1;
+                    wb_dbus_stb_o <= 1'b1;
+                    serviced_addr <= cur_addr;
+                    serviced_we   <= cur_we;
+                    serviced_valid <= 1'b1;
+                    dbus_state    <= DBUS_WAIT;
+                end
+            end
+
+            DBUS_WAIT: begin
+                wb_dbus_cyc_o <= 1'b1;
+                wb_dbus_stb_o <= 1'b1;
+                if (wb_dbus_ack_i) begin
+                    wb_dbus_cyc_o <= 1'b0;
+                    wb_dbus_stb_o <= 1'b0;
+                    if (ex_mem_mem_read) begin
+                        case (ex_mem_funct3)
+                            `F3_LB: case (ex_mem_alu_result[1:0])
+                                2'b00: dmem_read_data_raw_reg <= {{24{wb_dbus_dat_i[7]}},  wb_dbus_dat_i[7:0]};
+                                2'b01: dmem_read_data_raw_reg <= {{24{wb_dbus_dat_i[15]}}, wb_dbus_dat_i[15:8]};
+                                2'b10: dmem_read_data_raw_reg <= {{24{wb_dbus_dat_i[23]}}, wb_dbus_dat_i[23:16]};
+                                2'b11: dmem_read_data_raw_reg <= {{24{wb_dbus_dat_i[31]}}, wb_dbus_dat_i[31:24]};
+                            endcase
+                            `F3_LBU: case (ex_mem_alu_result[1:0])
+                                2'b00: dmem_read_data_raw_reg <= {24'b0, wb_dbus_dat_i[7:0]};
+                                2'b01: dmem_read_data_raw_reg <= {24'b0, wb_dbus_dat_i[15:8]};
+                                2'b10: dmem_read_data_raw_reg <= {24'b0, wb_dbus_dat_i[23:16]};
+                                2'b11: dmem_read_data_raw_reg <= {24'b0, wb_dbus_dat_i[31:24]};
+                            endcase
+                            `F3_LH: case (ex_mem_alu_result[1])
+                                1'b0: dmem_read_data_raw_reg <= {{16{wb_dbus_dat_i[15]}}, wb_dbus_dat_i[15:0]};
+                                1'b1: dmem_read_data_raw_reg <= {{16{wb_dbus_dat_i[31]}}, wb_dbus_dat_i[31:16]};
+                            endcase
+                            `F3_LHU: case (ex_mem_alu_result[1])
+                                1'b0: dmem_read_data_raw_reg <= {16'b0, wb_dbus_dat_i[15:0]};
+                                1'b1: dmem_read_data_raw_reg <= {16'b0, wb_dbus_dat_i[31:16]};
+                            endcase
+                            default: dmem_read_data_raw_reg <= wb_dbus_dat_i;
+                        endcase
+                    end
+                    dbus_state <= DBUS_DONE;
+                end
+            end
+
+            DBUS_DONE: begin
+                wb_dbus_cyc_o <= 1'b0;
+                wb_dbus_stb_o <= 1'b0;
+                dbus_state    <= DBUS_IDLE;
+            end
+
+            default: begin
+                dbus_state    <= DBUS_IDLE;
+                wb_dbus_cyc_o <= 1'b0;
+                wb_dbus_stb_o <= 1'b0;
+            end
+        endcase
+    end
+end
+
+assign dmem_read_data_raw = dmem_read_data_raw_reg;
+
+always @(*) begin
+    case (ex_mem_funct3)
+        `F3_SB: dbus_sel = 4'b0001 << ex_mem_alu_result[1:0];
+        `F3_SH: dbus_sel = 4'b0011 << {ex_mem_alu_result[1], 1'b0};
+        `F3_SW: dbus_sel = 4'b1111;
+        default: dbus_sel = 4'b1111;
+    endcase
+end
+
+
+
+
+
+assign dmem_read_data_extracted = dmem_read_data_raw_reg;
+
+assign dbus_stall = (dbus_state == DBUS_WAIT) |
+                    (dbus_state == DBUS_IDLE && is_new_memop);
 
 // IF/ID PIPELINE REGISTER
 
@@ -278,6 +404,7 @@ id_ex id_ex_dut (
     .clk(clk),
     .rst(rst),
     .flush(flush_id_ex),
+    .stall(dbus_stall),
     .rs1_value_in(rs1_value),
     .rs2_value_in(rs2_value),
     .immediate_in(immediate),
@@ -320,7 +447,7 @@ id_ex id_ex_dut (
     .jalr_out(id_ex_jalr)
 );
 
-assign flush_id_ex = stall | branch_taken;
+assign flush_id_ex = (hazard_stall & ~dbus_stall) | branch_taken;
 
 
 // EXECUTE STAGE
@@ -354,6 +481,7 @@ branch branch_dut (
 ex_mem ex_mem_dut (
     .clk(clk),
     .rst(rst),
+    .stall(dbus_stall),
     .alu_result_in(alu_result),
     .rs2_value_in(rs2_forwarded),
     .pc_plus_4_in(id_ex_pc_plus_4),
@@ -380,16 +508,6 @@ ex_mem ex_mem_dut (
 
 //MEMORY STAGE
 
-// Data memory is now external.
-// Drive the output ports with the current memory request.
-assign dmem_mem_read   = ex_mem_mem_read;
-assign dmem_mem_write  = ex_mem_mem_write;
-assign dmem_funct3     = ex_mem_funct3;
-assign dmem_address    = ex_mem_alu_result;
-assign dmem_write_data = ex_mem_rs2_value;
-
-// Receive the read data from the external memory.
-// (dmem_read_data is an input port, used directly below)
 
 
 // MEM/WB PIPELINE REGISTER
@@ -397,8 +515,9 @@ assign dmem_write_data = ex_mem_rs2_value;
 mem_wb mem_wb_dut (
     .clk(clk),
     .rst(rst),
+    .stall(dbus_stall),
     .alu_result_in(ex_mem_alu_result),
-    .read_data_in(dmem_read_data),
+    .read_data_in(dmem_read_data_extracted),
     .pc_plus_4_in(ex_mem_pc_plus_4),
     .rd_addr_in(ex_mem_rd_addr),
     .reg_write_in(ex_mem_reg_write),
@@ -451,9 +570,10 @@ hazard hazard_dut (
     .if_id_rs1_addr (if_id_rs1_addr),
     .if_id_rs2_addr (if_id_rs2_addr),
     .stall          (hazard_stall)
-);                                                
+);    
+                                       
 
-assign stall = hazard_stall | ibus_stall;
+assign stall = hazard_stall | ibus_stall | dbus_stall;
 // EXPOSE SYSTEM SIGNALS TO TESTBENCH
 
 assign sys_op_out  = mem_wb_sys_op;

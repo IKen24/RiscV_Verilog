@@ -46,6 +46,7 @@ module id_ex(
     input  wire        clk,
     input  wire        rst,
     input  wire        flush,
+    input wire         stall,
 
     // Data values from Decode
     input  wire [31:0] rs1_value_in,
@@ -150,6 +151,8 @@ always @(posedge clk) begin
         sys_op_out      <= 4'b0;
         illegal_out     <= 1'b0;
         jalr_out        <= 1'b0;
+    end else if (stall) begin 
+        
     end else begin
         rs1_value_out   <= rs1_value_in;
         rs2_value_out   <= rs2_value_in;

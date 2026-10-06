@@ -43,6 +43,7 @@
 module mem_wb(
     input  wire        clk,
     input  wire        rst,
+    input  wire        stall,
 
     // Data from MEM
     input  wire [31:0] alu_result_in,
@@ -84,6 +85,8 @@ always @(posedge clk) begin
         wb_sel_out     <= 2'b0;
         sys_op_out     <= 4'b0;
         illegal_out    <= 1'b0;
+    end else if (stall) begin 
+        
     end else begin
         alu_result_out <= alu_result_in;
         read_data_out  <= read_data_in;
