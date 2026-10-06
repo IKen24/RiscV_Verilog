@@ -1,0 +1,5 @@
+00500093   // addi x1, x0, 5    : x1 = 5
+00102023   // sw   x1, 0(x0)    : store x1 (5) at address 0
+00002103   // lw   x2, 0(x0)    : load from address 0 into x2  (x2 = 5)
+00110193   // addi x3, x2, 1    : x3 = x2 + 1 = 6  (load-use hazard)
+00000073   // ecall             : halt

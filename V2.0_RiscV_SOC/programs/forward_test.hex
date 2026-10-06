@@ -1,0 +1,5 @@
+00500093   // addi x1, x0, 5   : x1 = 5
+00108113   // addi x2, x1, 1   : x2 = x1 + 1 = 6  (needs forward)
+00208193   // addi x3, x1, 2   : x3 = x1 + 2 = 7  (needs forward)
+00310213   // addi x4, x2, 3   : x4 = x2 + 3 = 9  (needs forward)
+00000073   // ecall
